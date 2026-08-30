@@ -15,11 +15,21 @@ function Core.InitDB(db)
 	db.outbox = db.outbox or {}
 	db.current = db.current or ""
 	db.awaitingNew = db.awaitingNew or false
+	db.epoch = db.epoch or Core.NewEpoch()
 	return db
 end
 
--- Prune drops outbox entries the daemon has already picked up.
-function Core.Prune(db, lastAckedID)
+-- NewEpoch stamps a fresh SavedVariables so the daemon can tell a reset seq from an old one.
+function Core.NewEpoch()
+	local now = (time or os.time)()
+	return tostring(now) .. "." .. tostring(math.random(1, 999999))
+end
+
+-- Prune drops outbox entries the daemon has already picked up; an ack from another epoch is stale.
+function Core.Prune(db, lastAckedID, epoch)
+	if epoch ~= db.epoch then
+		return
+	end
 	local kept = {}
 	for _, e in ipairs(db.outbox) do
 		if e.id > (lastAckedID or 0) then

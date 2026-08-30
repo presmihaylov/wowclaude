@@ -31,7 +31,7 @@ func TestParse(t *testing.T) {
 	if err := os.WriteFile(p, []byte(saved), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Parse(p)
+	_, got, err := Parse(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestParseEmptyOutbox(t *testing.T) {
 	if err := os.WriteFile(p, []byte("WoWClaudeDB = {\n\t[\"seq\"] = 0,\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Parse(p)
+	_, got, err := Parse(p)
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %+v, %v", got, err)
 	}
@@ -62,7 +62,7 @@ func TestParseRejectsCode(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`WoWClaudeDB = os.getenv("HOME")`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Parse(p); err == nil {
+	if _, _, err := Parse(p); err == nil {
 		t.Fatal("want error: libs are not loaded")
 	}
 }

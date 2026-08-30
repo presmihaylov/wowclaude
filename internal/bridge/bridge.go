@@ -38,7 +38,8 @@ type Config struct {
 }
 
 type state struct {
-	LastAckedID int `json:"lastAckedID"`
+	LastAckedID int    `json:"lastAckedID"`
+	Epoch       string `json:"epoch"`
 }
 
 type Bridge struct {
@@ -165,11 +166,19 @@ func (b *Bridge) Run(ctx context.Context) error {
 }
 
 func (b *Bridge) drain(ctx context.Context) error {
-	reqs, err := outbox.Parse(b.savedVarsPath())
+	epoch, reqs, err := outbox.Parse(b.savedVarsPath())
 	if err != nil {
 		log.Printf("outbox: %v", err)
 		b.lastErr = err.Error()
 		return b.refresh()
+	}
+	// A new epoch means the addon's seq restarted, so every old ack is void.
+	if epoch != b.st.Epoch {
+		log.Printf("saved variables epoch %q replaces %q, resetting acks", epoch, b.st.Epoch)
+		b.st = state{Epoch: epoch}
+		if err := b.saveState(); err != nil {
+			return err
+		}
 	}
 	for _, r := range reqs {
 		if r.ID <= b.st.LastAckedID {
@@ -246,6 +255,7 @@ func (b *Bridge) writeInbox(active *inbox.Active) error {
 	b.inbox.GeneratedAt = time.Now()
 	b.inbox.DefaultCwd = b.cfg.DefaultCwd
 	b.inbox.LastAckedID = b.st.LastAckedID
+	b.inbox.Epoch = b.st.Epoch
 	b.inbox.Active = active
 	b.inbox.Error = b.lastErr
 	if err := inbox.Write(b.inboxPath(), b.inbox); err != nil {

@@ -57,6 +57,19 @@ func TestFailedRequestStaysVisible(t *testing.T) {
 	if got := readInbox(t, b); !strings.Contains(got, `error = "request 2:`) {
 		t.Fatalf("new request did not replace the error:\n%s", got)
 	}
+	// A fresh install restarts seq at 1 under a new epoch; the daemon must not skip it.
+	outbox = strings.Replace(outbox, "id = 2", "id = 1", 1)
+	outbox = strings.Replace(outbox, "WoWClaudeDB = {", `WoWClaudeDB = { epoch = "fresh",`, 1)
+	if err := os.WriteFile(filepath.Join(sv, AddonName+".lua"), []byte(outbox), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got = readInbox(t, b)
+	if !strings.Contains(got, `error = "request 1:`) || !strings.Contains(got, `epoch = "fresh"`) {
+		t.Fatalf("seq regression was ignored:\n%s", got)
+	}
 }
 
 func readInbox(t *testing.T, b *Bridge) string {

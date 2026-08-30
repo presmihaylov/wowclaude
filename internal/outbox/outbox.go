@@ -16,24 +16,25 @@ type Request struct {
 	Prompt    string
 }
 
-// Parse evaluates the SavedVariables file in a sandboxed Lua state and returns requests by ID.
-func Parse(path string) ([]Request, error) {
+// Parse evaluates the SavedVariables file in a sandboxed Lua state and returns the epoch and requests by ID.
+func Parse(path string) (string, []Request, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
+		return "", nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	L := lua.NewState(lua.Options{SkipOpenLibs: true})
 	defer L.Close()
 	if err := L.DoString(string(src)); err != nil {
-		return nil, fmt.Errorf("eval %s: %w", path, err)
+		return "", nil, fmt.Errorf("eval %s: %w", path, err)
 	}
 	db, ok := L.GetGlobal("WoWClaudeDB").(*lua.LTable)
 	if !ok {
-		return nil, fmt.Errorf("%s: WoWClaudeDB is not a table", path)
+		return "", nil, fmt.Errorf("%s: WoWClaudeDB is not a table", path)
 	}
+	epoch := str(db, "epoch")
 	outbox, ok := db.RawGetString("outbox").(*lua.LTable)
 	if !ok {
-		return nil, nil
+		return epoch, nil, nil
 	}
 	var out []Request
 	var perr error
@@ -56,10 +57,10 @@ func Parse(path string) ([]Request, error) {
 		})
 	})
 	if perr != nil {
-		return nil, perr
+		return "", nil, perr
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, nil
+	return epoch, out, nil
 }
 
 func str(t *lua.LTable, key string) string {
