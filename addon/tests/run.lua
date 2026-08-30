@@ -2,15 +2,14 @@
 local here = arg[0]:match("^(.*)/[^/]+$") or "."
 local addonDir = here .. "/../WoWClaude/"
 
-local function load(file, ns)
+local function load(file)
 	local chunk, err = loadfile(addonDir .. file)
 	if not chunk then error(err) end
-	return chunk("WoWClaude", ns)
+	return chunk()
 end
 
-local ns = {}
-load("Core.lua", ns)
-local Core = ns.Core
+load("Core.lua")
+local Core = WoWClaudeNS.Core
 
 local tests, failed = {}, 0
 local function test(name, fn) tests[#tests + 1] = { name = name, fn = fn } end
@@ -24,7 +23,7 @@ test("Queue assigns ids and flags new chats", function()
 	local db = Core.InitDB(nil)
 	local e1 = Core.Queue(db, "", "hello")
 	local e2 = Core.Queue(db, "abc", "again")
-	eq(e1.id, 1); eq(e2.id, 2); eq(#db.outbox, 2)
+	eq(e1.id, 1); eq(e2.id, 2); eq(table.getn(db.outbox), 2)
 	eq(db.awaitingNew, "hello")
 	eq(e2.session, "abc")
 end)
@@ -33,7 +32,7 @@ test("Prune drops acked entries", function()
 	local db = Core.InitDB(nil)
 	Core.Queue(db, "", "a"); Core.Queue(db, "", "b"); Core.Queue(db, "", "c")
 	Core.Prune(db, 2)
-	eq(#db.outbox, 1); eq(db.outbox[1].prompt, "c")
+	eq(table.getn(db.outbox), 1); eq(db.outbox[1].prompt, "c")
 end)
 
 test("ResolveCurrent finds the session a new chat created", function()
@@ -66,10 +65,10 @@ test("Transcript merges saved, active and queued turns", function()
 		active = { sessionID = "s1", prompt = "second?", partial = "" },
 	}
 	local t = Core.Transcript(db, inbox, "s1")
-	eq(#t, 5)
+	eq(table.getn(t), 5)
 	eq(t[3].text, "second?"); eq(t[4].text, "..."); eq(t[4].pending, true)
 	eq(t[5].text, "third?"); eq(t[5].queued, true)
-	eq(#Core.Transcript(db, inbox, "other"), 0)
+	eq(table.getn(Core.Transcript(db, inbox, "other")), 0)
 end)
 
 test("Status prefers error, then queue, then active", function()

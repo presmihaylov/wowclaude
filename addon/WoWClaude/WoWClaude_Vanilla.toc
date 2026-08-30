@@ -1,4 +1,4 @@
-## Interface: 11200
+## Interface: 11509
 ## Title: |cffd97757WoW|rClaude
 ## Notes: Talk to your local Claude Code sessions from inside the game.
 ## Author: presmihaylov

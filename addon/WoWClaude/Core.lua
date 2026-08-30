@@ -1,8 +1,12 @@
-local _, ns = ...
+-- Lua 5.0 (vanilla 1.12) and 5.1 (Classic Era): no "#", no varargs namespace, no string.match.
+WoWClaudeNS = WoWClaudeNS or {}
+local ns = WoWClaudeNS
 
 -- Pure state logic, no frames, so it runs under plain Lua in tests.
 local Core = {}
 ns.Core = Core
+
+local getn = table.getn
 
 function Core.InitDB(db)
 	db = db or {}
@@ -18,7 +22,7 @@ function Core.Prune(db, lastAckedID)
 	local kept = {}
 	for _, e in ipairs(db.outbox) do
 		if e.id > (lastAckedID or 0) then
-			kept[#kept + 1] = e
+			table.insert(kept, e)
 		end
 	end
 	db.outbox = kept
@@ -27,7 +31,7 @@ end
 function Core.Queue(db, sessionID, prompt)
 	db.seq = db.seq + 1
 	local entry = { id = db.seq, session = sessionID or "", cwd = db.cwd or "", prompt = prompt }
-	db.outbox[#db.outbox + 1] = entry
+	table.insert(db.outbox, entry)
 	if entry.session == "" then
 		db.awaitingNew = prompt
 	end
@@ -51,7 +55,7 @@ function Core.ResolveCurrent(db, inbox)
 	if not db.awaitingNew then
 		return
 	end
-	if #db.outbox > 0 or (inbox.active and inbox.active.sessionID == "") then
+	if getn(db.outbox) > 0 or (inbox.active and inbox.active.sessionID == "") then
 		return
 	end
 	local prompt = db.awaitingNew
@@ -69,8 +73,8 @@ function Core.Status(db, inbox)
 	if inbox.error and inbox.error ~= "" then
 		return "error: " .. inbox.error
 	end
-	if #db.outbox > 0 then
-		return #db.outbox .. " queued, waiting for the daemon (press Refresh)"
+	if getn(db.outbox) > 0 then
+		return getn(db.outbox) .. " queued, waiting for the daemon (press Refresh)"
 	end
 	if inbox.active then
 		return "Claude is working... (press Refresh)"
@@ -84,21 +88,21 @@ function Core.Transcript(db, inbox, sessionID)
 	local s = Core.FindSession(inbox, sessionID)
 	if s then
 		for _, m in ipairs(s.messages or {}) do
-			out[#out + 1] = { role = m.role, text = m.text }
+			table.insert(out, { role = m.role, text = m.text })
 		end
 	end
 	local a = inbox.active
 	if a and a.sessionID == sessionID then
-		out[#out + 1] = { role = "user", text = a.prompt }
+		table.insert(out, { role = "user", text = a.prompt })
 		local partial = a.partial or ""
 		if partial == "" then
 			partial = "..."
 		end
-		out[#out + 1] = { role = "assistant", text = partial, pending = true }
+		table.insert(out, { role = "assistant", text = partial, pending = true })
 	end
 	for _, e in ipairs(db.outbox) do
 		if e.session == sessionID then
-			out[#out + 1] = { role = "user", text = e.prompt, queued = true }
+			table.insert(out, { role = "user", text = e.prompt, queued = true })
 		end
 	end
 	return out

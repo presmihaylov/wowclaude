@@ -8,6 +8,8 @@ test:
 
 test-addon:
 	luajit addon/tests/run.lua
+	luajit -bl addon/WoWClaude/UI.lua > /dev/null
+	@! grep -nE '#[a-zA-Z_(]|^local .* = \.\.\.|:match\(|string\.match|strtrim|[^a-zA-Z_.]print\(|SetSize|HookScript' addon/WoWClaude/*.lua | grep -v '^[^:]*:1:' || (echo "Lua 5.0 incompatibility above" && exit 1)
 
 check: test test-addon
 	go vet ./...

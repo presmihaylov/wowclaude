@@ -1,6 +1,7 @@
 # wowclaude
 
-Talk to your local Claude Code sessions from inside World of Warcraft Classic.
+Talk to your local Claude Code sessions from inside World of Warcraft. Works on
+vanilla 1.12 clients (TurtleWoW, OctoWoW, Lua 5.0) and on Classic Era (Lua 5.1).
 
 Two parts:
 
@@ -32,34 +33,64 @@ the full session list with the last 40 turns of each. `Refresh` is a second
 Two reloads per turn is the floor. `C_UI.Reload` needs a hardware event, so the
 addon cannot reload on a timer, and there is no live inbound channel.
 
+## Supported clients
+
+| Client | Folder to pass as `--wow-dir` | `.toc` the game reads |
+|---|---|---|
+| Vanilla 1.12 (TurtleWoW, OctoWoW) | the folder that holds `WoW.exe` and `WTF\`, e.g. `D:\games\OctoWow` | `WoWClaude.toc` (`## Interface: 11200`) |
+| Classic Era / Anniversary | `_classic_era_`, e.g. `/Applications/World of Warcraft/_classic_era_` | `WoWClaude_Vanilla.toc` (`## Interface: 11509`) |
+
+The addon code is one set of files for both. It avoids everything Lua 5.0 lacks
+(`#`, `string.match`, varargs at file scope) and reads handler arguments from
+`this`/`arg1` when the client passes none.
+
 ## Install
+
+Build once, then point `install` and `serve` at the game folder for your client.
 
 ```
 make build
-./bin/wowclaude install --wow-dir "/Applications/World of Warcraft/_classic_era_"
-./bin/wowclaude serve   --wow-dir "/Applications/World of Warcraft/_classic_era_" --cwd ~/prg/repos/myproject
 ```
 
-Windows: `--wow-dir "C:\Program Files (x86)\World of Warcraft\_classic_era_"`.
+Vanilla 1.12 on Windows, for example OctoWoW:
+
+```
+./bin/wowclaude.exe install --wow-dir "D:\games\OctoWow"
+./bin/wowclaude.exe serve   --wow-dir "D:\games\OctoWow" --cwd "C:\Users\you\repos\myproject" --claude "C:\Users\you\AppData\Roaming\Claude\claude-code\<version>\claude.exe"
+```
+
+Classic Era on macOS:
+
+```
+./bin/wowclaude install --wow-dir "/Applications/World of Warcraft/_classic_era_"
+./bin/wowclaude serve   --wow-dir "/Applications/World of Warcraft/_classic_era_" --cwd ~/repos/myproject
+```
+
+Classic Era on Windows: `--wow-dir "C:\Program Files (x86)\World of Warcraft\_classic_era_"`.
 
 `serve` flags: `--account` (only when `WTF/Account` has several folders),
-`--claude` (binary, default `claude` on PATH), `--cwd` (working directory for new
-chats), `--permission-mode` (default `acceptEdits`; print mode cannot answer a
-permission prompt, so never use `default`), `--state` (default `~/.wowclaude/state.json`).
+`--claude` (binary; needed when `claude` is not on PATH), `--cwd` (working
+directory for new chats; pick a narrow one, prompts auto-accept edits there),
+`--permission-mode` (default `acceptEdits`; print mode cannot answer a permission
+prompt, so never use `default`), `--state` (default `~/.wowclaude/state.json`).
 
 ## In-game checklist
 
 1. Install the addon with the game closed the first time. `Inbox.lua` must exist
    before the game starts; on macOS `/reload` does not detect new files, only
    changed ones.
-2. Start `wowclaude serve` before you log in.
-3. Log in. If the addon shows as out of date, run
-   `/dump select(4, GetBuildInfo())` and put that number in `## Interface:` in
-   `WoWClaude.toc`.
+2. Start `wowclaude serve` before you log in. If it reports 0 account folders,
+   log in once, log out, and start it again.
+3. Log in. If the addon shows as out of date, tick "Load out of date AddOns".
+   On Classic Era you can also put the current build's interface number in
+   `WoWClaude_Vanilla.toc`; on 1.12 the number is always `11200`.
 4. `/claude` opens the window. Pick a session or `+ New chat`, type, press Enter
    or `Send`. The UI reloads.
 5. Wait for the daemon (its log prints `request N done`), then press `Refresh`.
 6. `/claude cwd /path/to/repo` sets the working directory for new chats.
+
+If a Lua error appears, run `/console scriptErrors 1` (1.12: `/script SetCVar("scriptErrors", 1)`)
+and report the message.
 
 ## Tests
 
@@ -68,5 +99,5 @@ make check        # go test, go vet, luajit addon tests
 ```
 
 The Go side is unit tested, including a Lua round trip of `Inbox.lua` through
-gopher-lua. The addon's pure logic (`Core.lua`) runs under luajit, which is Lua
-5.1 like the game. `UI.lua` is only compile-checked; the frames need the client.
+gopher-lua. The addon's pure logic (`Core.lua`) runs under luajit (Lua 5.1). Lua 5.0
+compatibility is enforced by a grep in `make check`, not by a 5.0 interpreter. `UI.lua` is only compile-checked; the frames need the client.

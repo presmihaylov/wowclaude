@@ -1,5 +1,5 @@
 std = "lua51"
 max_line_length = false
-globals = { "WoWClaudeDB", "WoWClaudeInbox", "SLASH_WOWCLAUDE1", "SLASH_WOWCLAUDE2", "SlashCmdList" }
-read_globals = { "CreateFrame", "UIParent", "UISpecialFrames", "ReloadUI", "ChatFontNormal", "tinsert", "strtrim", "print" }
+globals = { "WoWClaudeDB", "WoWClaudeInbox", "WoWClaudeNS", "SLASH_WOWCLAUDE1", "SLASH_WOWCLAUDE2", "SlashCmdList" }
+read_globals = { "this", "arg1", "BackdropTemplateMixin", "DEFAULT_CHAT_FRAME", "CreateFrame", "UIParent", "UISpecialFrames", "ReloadUI", "ChatFontNormal", "tinsert", "strtrim", "print" }
 files["tests"] = { globals = { "arg" } }
