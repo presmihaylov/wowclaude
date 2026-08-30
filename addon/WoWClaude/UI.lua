@@ -264,7 +264,7 @@ loader:SetScript("OnEvent", function(_, _, name)
 	end
 	loader:UnregisterEvent("ADDON_LOADED")
 	WoWClaudeDB = Core.InitDB(WoWClaudeDB)
-	Core.Prune(WoWClaudeDB, WoWClaudeInbox.lastAckedID)
+	Core.Prune(WoWClaudeDB, WoWClaudeInbox.lastAckedID, WoWClaudeInbox.epoch)
 	Core.ResolveCurrent(WoWClaudeDB, WoWClaudeInbox)
 	local reopen = WoWClaudeDB.open
 	UI.Build()
