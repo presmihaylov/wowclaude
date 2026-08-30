@@ -8,8 +8,12 @@ local function load(file)
 	return chunk()
 end
 
+-- Classic Era has no table.getn; load once without it to exercise the fallback.
+local realGetn = table.getn
+table.getn = nil
 load("Core.lua")
 local Core = WoWClaudeNS.Core
+table.getn = realGetn
 
 local tests, failed = {}, 0
 local function test(name, fn) tests[#tests + 1] = { name = name, fn = fn } end
@@ -26,6 +30,12 @@ test("Queue assigns ids and flags new chats", function()
 	eq(e1.id, 1); eq(e2.id, 2); eq(table.getn(db.outbox), 2)
 	eq(db.awaitingNew, "hello")
 	eq(e2.session, "abc")
+end)
+
+test("getn fallback counts without table.getn", function()
+	local db = Core.InitDB(nil)
+	Core.Queue(db, "", "a"); Core.Queue(db, "", "b")
+	eq(Core.Status(db, { error = "" }):sub(1, 8), "2 queued")
 end)
 
 test("Prune drops acked entries", function()
