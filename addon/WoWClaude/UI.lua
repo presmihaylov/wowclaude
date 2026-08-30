@@ -98,7 +98,6 @@ function UI.Build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", function() f:StartMoving() end)
 	f:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-	f:SetScript("OnUpdate", function() UI.Tick() end)
 	if f.SetClampedToScreen then
 		f:SetClampedToScreen(true)
 	end
@@ -246,6 +245,10 @@ end
 -- Tick animates the wait and reloads once, the moment the daemon signals the turn is done.
 function UI.Tick()
 	local db = WoWClaudeDB
+	-- The driver frame ticks from load, before the window is built and while it is closed.
+	if not db or not UI.frame then
+		return
+	end
 	if not db.waitFor then
 		return
 	end
@@ -381,7 +384,11 @@ function UI.Toggle()
 	UI.frame:Show()
 end
 
+-- The loader frame is parentless and never hidden, so its OnUpdate keeps running while the
+-- window is closed. Hiding a frame stops its OnUpdate, so the window itself cannot drive the
+-- poll: a reply that lands while the window is shut would never load itself.
 local loader = CreateFrame("Frame")
+loader:SetScript("OnUpdate", function() UI.Tick() end)
 loader:RegisterEvent("ADDON_LOADED")
 loader:SetScript("OnEvent", function(_, _, name)
 	name = name or arg1
