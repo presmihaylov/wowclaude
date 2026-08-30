@@ -11,6 +11,7 @@ import (
 
 type Request struct {
 	ID        int
+	Slot      int
 	SessionID string
 	Cwd       string
 	Prompt    string
@@ -49,8 +50,10 @@ func Parse(path string) (string, []Request, error) {
 			perr = fmt.Errorf("%s: outbox entry without numeric id", path)
 			return
 		}
+		slot, _ := entry.RawGetString("slot").(lua.LNumber)
 		out = append(out, Request{
 			ID:        int(id),
+			Slot:      int(slot),
 			SessionID: str(entry, "session"),
 			Cwd:       str(entry, "cwd"),
 			Prompt:    str(entry, "prompt"),

@@ -38,6 +38,7 @@ type Inbox struct {
 	LastAckedID int
 	Epoch       string
 	LastDoneID  int
+	Slots       int
 	Active      *Active
 	Error       string
 	Sessions    []Session
@@ -63,6 +64,7 @@ func Render(in Inbox) string {
 	field(&b, 1, "lastAckedID", in.LastAckedID)
 	field(&b, 1, "epoch", in.Epoch)
 	field(&b, 1, "lastDoneID", in.LastDoneID)
+	field(&b, 1, "slots", in.Slots)
 	field(&b, 1, "error", in.Error)
 	if in.Active != nil {
 		b.WriteString("\tactive = {\n")
@@ -74,21 +76,48 @@ func Render(in Inbox) string {
 	}
 	b.WriteString("\tsessions = {\n")
 	for _, s := range in.Sessions {
-		b.WriteString("\t\t{\n")
-		field(&b, 3, "id", s.ID)
-		field(&b, 3, "title", s.Title)
-		field(&b, 3, "cwd", s.Cwd)
-		field(&b, 3, "lastModified", s.LastModified.UTC().Format(time.RFC3339))
-		b.WriteString("\t\t\tmessages = {\n")
-		for _, m := range s.Messages {
-			fmt.Fprintf(&b, "\t\t\t\t{ role = %s, text = %s },\n", quote(m.Role), quote(m.Text))
-		}
-		b.WriteString("\t\t\t},\n")
-		b.WriteString("\t\t},\n")
+		writeSession(&b, 2, s)
 	}
 	b.WriteString("\t},\n")
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// Reply is one finished turn, delivered live through a LoadOnDemand slot addon.
+type Reply struct {
+	ID      int
+	Epoch   string
+	Error   string
+	Session *Session
+}
+
+func RenderReply(r Reply) string {
+	var b strings.Builder
+	b.WriteString("WoWClaudeReply = {\n")
+	field(&b, 1, "id", r.ID)
+	field(&b, 1, "epoch", r.Epoch)
+	field(&b, 1, "error", r.Error)
+	if r.Session != nil {
+		b.WriteString("\tsession =\n")
+		writeSession(&b, 1, *r.Session)
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
+
+func writeSession(b *strings.Builder, depth int, s Session) {
+	pad := strings.Repeat("\t", depth)
+	b.WriteString(pad + "{\n")
+	field(b, depth+1, "id", s.ID)
+	field(b, depth+1, "title", s.Title)
+	field(b, depth+1, "cwd", s.Cwd)
+	field(b, depth+1, "lastModified", s.LastModified.UTC().Format(time.RFC3339))
+	b.WriteString(pad + "\tmessages = {\n")
+	for _, m := range s.Messages {
+		fmt.Fprintf(b, "%s\t\t{ role = %s, text = %s },\n", pad, quote(m.Role), quote(m.Text))
+	}
+	b.WriteString(pad + "\t},\n")
+	b.WriteString(pad + "},\n")
 }
 
 func field(b *strings.Builder, depth int, key string, v any) {

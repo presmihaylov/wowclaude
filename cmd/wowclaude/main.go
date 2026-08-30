@@ -16,6 +16,7 @@ import (
 	"github.com/presmihaylov/wowclaude/internal/bridge"
 	"github.com/presmihaylov/wowclaude/internal/claude"
 	"github.com/presmihaylov/wowclaude/internal/sessions"
+	"github.com/presmihaylov/wowclaude/internal/slots"
 )
 
 func main() {
@@ -71,6 +72,10 @@ func install(args []string) error {
 		}
 		fmt.Println("installed", filepath.Join(dst, e.Name()))
 	}
+	if err := slots.Install(filepath.Dir(dst), bridge.Slots); err != nil {
+		return err
+	}
+	fmt.Printf("installed %d reply slots next to it (%s0001..)\n", bridge.Slots, slots.Prefix)
 	return nil
 }
 

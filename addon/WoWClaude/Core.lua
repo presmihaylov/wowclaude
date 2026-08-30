@@ -55,9 +55,51 @@ function Core.Queue(db, sessionID, prompt)
 	if entry.session == "" then
 		db.awaitingNew = prompt
 	end
+	entry.slot = db.slotBase or 0
 	db.waitFor = entry.id
+	db.waitSlot = entry.slot
 	db.sentAt = Core.Now()
 	return entry
+end
+
+-- FirstFreeSlot finds the lowest reply slot not yet loaded this game session; 0 means none left.
+function Core.FirstFreeSlot(isLoaded, n)
+	for i = 1, n do
+		if not isLoaded(Core.SlotName(i)) then
+			return i
+		end
+	end
+	return 0
+end
+
+function Core.SlotName(slot)
+	return string.format("WoWClaudeIn%04d", slot)
+end
+
+-- ApplyReply merges a live reply into the inbox; a reply for another turn or epoch is ignored.
+function Core.ApplyReply(db, inbox, reply)
+	if not reply or reply.epoch ~= db.epoch or reply.id ~= db.waitFor then
+		return false
+	end
+	inbox.error = reply.error or ""
+	inbox.active = nil
+	inbox.lastDoneID = reply.id
+	local s = reply.session
+	if s then
+		local kept = { s }
+		for _, old in ipairs(inbox.sessions or {}) do
+			if old.id ~= s.id then
+				table.insert(kept, old)
+			end
+		end
+		inbox.sessions = kept
+		db.current = s.id
+		db.awaitingNew = false
+	end
+	Core.Prune(db, reply.id, reply.epoch)
+	db.waitFor = nil
+	db.sentAt = nil
+	return true
 end
 
 -- Settle clears the wait once the daemon reports the turn done under the same epoch.

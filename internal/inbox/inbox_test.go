@@ -86,3 +86,17 @@ func TestTrim(t *testing.T) {
 		t.Fatalf("got %+v", got[0].Messages)
 	}
 }
+
+func TestRenderReplyIsValidLua(t *testing.T) {
+	r := Reply{ID: 3, Epoch: "e", Session: &Session{ID: "s", Title: "t \"q\"", Messages: []Message{{Role: "user", Text: "a\nb"}}}}
+	L := lua.NewState(lua.Options{SkipOpenLibs: true})
+	defer L.Close()
+	if err := L.DoString(RenderReply(r)); err != nil {
+		t.Fatalf("reply does not parse: %v\n%s", err, RenderReply(r))
+	}
+	tbl := L.GetGlobal("WoWClaudeReply").(*lua.LTable)
+	sess := tbl.RawGetString("session").(*lua.LTable)
+	if sess.RawGetString("id").String() != "s" || tbl.RawGetString("id").String() != "3" {
+		t.Fatalf("bad reply table: %s", RenderReply(r))
+	}
+}
