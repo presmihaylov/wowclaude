@@ -46,6 +46,8 @@ type Bridge struct {
 	st    state
 	mu    sync.Mutex
 	inbox inbox.Inbox
+	// lastErr stays in the inbox until the next request starts, so a failed turn is visible after Refresh.
+	lastErr string
 }
 
 func New(cfg Config) (*Bridge, error) {
@@ -125,7 +127,7 @@ func (b *Bridge) saveState() error {
 func (b *Bridge) Run(ctx context.Context) error {
 	log.Printf("watching %s", b.savedVarsPath())
 	log.Printf("writing  %s", b.inboxPath())
-	if err := b.refresh(""); err != nil {
+	if err := b.refresh(); err != nil {
 		return err
 	}
 	var lastMod time.Time
@@ -155,7 +157,7 @@ func (b *Bridge) Run(ctx context.Context) error {
 		}
 		if time.Since(lastRefresh) > time.Minute {
 			lastRefresh = time.Now()
-			if err := b.refresh(""); err != nil {
+			if err := b.refresh(); err != nil {
 				return err
 			}
 		}
@@ -166,7 +168,8 @@ func (b *Bridge) drain(ctx context.Context) error {
 	reqs, err := outbox.Parse(b.savedVarsPath())
 	if err != nil {
 		log.Printf("outbox: %v", err)
-		return b.refresh(err.Error())
+		b.lastErr = err.Error()
+		return b.refresh()
 	}
 	for _, r := range reqs {
 		if r.ID <= b.st.LastAckedID {
@@ -176,11 +179,12 @@ func (b *Bridge) drain(ctx context.Context) error {
 			return err
 		}
 	}
-	return b.refresh("")
+	return b.refresh()
 }
 
 func (b *Bridge) handle(ctx context.Context, r outbox.Request) error {
 	b.st.LastAckedID = r.ID
+	b.lastErr = ""
 	if err := b.saveState(); err != nil {
 		return err
 	}
@@ -190,7 +194,7 @@ func (b *Bridge) handle(ctx context.Context, r outbox.Request) error {
 	}
 	log.Printf("request %d: session=%q cwd=%s prompt=%q", r.ID, r.SessionID, cwd, truncate(r.Prompt))
 	active := &inbox.Active{OutboxID: r.ID, SessionID: r.SessionID, Prompt: r.Prompt}
-	if err := b.writeInbox(active, ""); err != nil {
+	if err := b.writeInbox(active); err != nil {
 		return err
 	}
 	var partial strings.Builder
@@ -203,7 +207,7 @@ func (b *Bridge) handle(ctx context.Context, r outbox.Request) error {
 		}
 		lastWrite = time.Now()
 		active.Partial = partial.String()
-		writeErr = b.writeInbox(active, "")
+		writeErr = b.writeInbox(active)
 	}
 	res, err := claude.Run(ctx, b.cfg.ClaudeBin, claude.Request{
 		Prompt: r.Prompt, SessionID: r.SessionID, Cwd: cwd, PermissionMode: b.cfg.PermissionMode,
@@ -213,17 +217,19 @@ func (b *Bridge) handle(ctx context.Context, r outbox.Request) error {
 	}
 	if err != nil {
 		log.Printf("request %d failed: %v", r.ID, err)
-		return b.refresh(fmt.Sprintf("request %d: %v", r.ID, err))
+		b.lastErr = fmt.Sprintf("request %d: %v", r.ID, err)
+		return b.refresh()
 	}
 	log.Printf("request %d done: session=%s chars=%d", r.ID, res.SessionID, len(res.Text))
 	if res.IsError {
-		return b.refresh(fmt.Sprintf("request %d: claude reported an error: %s", r.ID, truncate(res.Text)))
+		b.lastErr = fmt.Sprintf("request %d: claude reported an error: %s", r.ID, truncate(res.Text))
+		return b.refresh()
 	}
 	return nil
 }
 
 // refresh rescans transcripts and rewrites the inbox with no active request.
-func (b *Bridge) refresh(errMsg string) error {
+func (b *Bridge) refresh() error {
 	sess, err := b.loadSessions()
 	if err != nil {
 		return err
@@ -231,17 +237,17 @@ func (b *Bridge) refresh(errMsg string) error {
 	b.mu.Lock()
 	b.inbox.Sessions = sess
 	b.mu.Unlock()
-	return b.writeInbox(nil, errMsg)
+	return b.writeInbox(nil)
 }
 
-func (b *Bridge) writeInbox(active *inbox.Active, errMsg string) error {
+func (b *Bridge) writeInbox(active *inbox.Active) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.inbox.GeneratedAt = time.Now()
 	b.inbox.DefaultCwd = b.cfg.DefaultCwd
 	b.inbox.LastAckedID = b.st.LastAckedID
 	b.inbox.Active = active
-	b.inbox.Error = errMsg
+	b.inbox.Error = b.lastErr
 	if err := inbox.Write(b.inboxPath(), b.inbox); err != nil {
 		return err
 	}

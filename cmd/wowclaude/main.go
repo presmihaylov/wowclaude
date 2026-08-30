@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/presmihaylov/wowclaude"
 	"github.com/presmihaylov/wowclaude/internal/bridge"
+	"github.com/presmihaylov/wowclaude/internal/claude"
 	"github.com/presmihaylov/wowclaude/internal/sessions"
 )
 
@@ -81,7 +83,7 @@ func serve(args []string) error {
 	}
 	fs_.StringVar(&cfg.WowDir, "wow-dir", "", "game folder, e.g. \"/Applications/World of Warcraft/_classic_era_\"")
 	fs_.StringVar(&cfg.Account, "account", "", "WTF/Account/<name>; auto-detected when there is one")
-	fs_.StringVar(&cfg.ClaudeBin, "claude", "claude", "claude binary")
+	fs_.StringVar(&cfg.ClaudeBin, "claude", "claude", "claude binary; when omitted, PATH then the newest desktop-app copy")
 	fs_.StringVar(&cfg.DefaultCwd, "cwd", home, "working directory for new sessions")
 	fs_.StringVar(&cfg.PermissionMode, "permission-mode", "acceptEdits", "claude --permission-mode; print mode cannot answer prompts")
 	fs_.StringVar(&cfg.StatePath, "state", filepath.Join(home, ".wowclaude", "state.json"), "daemon state file")
@@ -96,6 +98,12 @@ func serve(args []string) error {
 		return err
 	}
 	cfg.ProjectsRoot = root
+	bin, err := claude.Locate(cfg.ClaudeBin)
+	if err != nil {
+		return err
+	}
+	cfg.ClaudeBin = bin
+	log.Printf("claude binary %s", bin)
 	b, err := bridge.New(cfg)
 	if err != nil {
 		return err

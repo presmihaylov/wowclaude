@@ -6,7 +6,8 @@ local ns = WoWClaudeNS
 local Core = {}
 ns.Core = Core
 
-local getn = table.getn
+-- Classic Era dropped table.getn; 1.12 has it and lacks the # operator.
+local getn = table.getn or function(t) local n = 0 while t[n + 1] ~= nil do n = n + 1 end return n end
 
 function Core.InitDB(db)
 	db = db or {}
