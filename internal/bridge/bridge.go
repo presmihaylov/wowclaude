@@ -40,6 +40,7 @@ type Config struct {
 type state struct {
 	LastAckedID int    `json:"lastAckedID"`
 	Epoch       string `json:"epoch"`
+	LastDoneID  int    `json:"lastDoneID"`
 }
 
 type Bridge struct {
@@ -227,14 +228,25 @@ func (b *Bridge) handle(ctx context.Context, r outbox.Request) error {
 	if err != nil {
 		log.Printf("request %d failed: %v", r.ID, err)
 		b.lastErr = fmt.Sprintf("request %d: %v", r.ID, err)
-		return b.refresh()
+		return b.finish(r.ID)
 	}
 	log.Printf("request %d done: session=%s chars=%d", r.ID, res.SessionID, len(res.Text))
 	if res.IsError {
 		b.lastErr = fmt.Sprintf("request %d: claude reported an error: %s", r.ID, truncate(res.Text))
-		return b.refresh()
 	}
-	return nil
+	return b.finish(r.ID)
+}
+
+// finish records the turn as done and drops the signal file the addon polls for, then rewrites the inbox.
+func (b *Bridge) finish(id int) error {
+	b.st.LastDoneID = id
+	if err := b.saveState(); err != nil {
+		return err
+	}
+	if err := writeSignal(AddonDir(b.cfg.WowDir), b.st.Epoch, id); err != nil {
+		return err
+	}
+	return b.refresh()
 }
 
 // refresh rescans transcripts and rewrites the inbox with no active request.
@@ -256,6 +268,7 @@ func (b *Bridge) writeInbox(active *inbox.Active) error {
 	b.inbox.DefaultCwd = b.cfg.DefaultCwd
 	b.inbox.LastAckedID = b.st.LastAckedID
 	b.inbox.Epoch = b.st.Epoch
+	b.inbox.LastDoneID = b.st.LastDoneID
 	b.inbox.Active = active
 	b.inbox.Error = b.lastErr
 	if err := inbox.Write(b.inboxPath(), b.inbox); err != nil {

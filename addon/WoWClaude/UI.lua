@@ -98,8 +98,7 @@ function UI.Build()
 	f:RegisterForDrag("LeftButton")
 	f:SetScript("OnDragStart", function() f:StartMoving() end)
 	f:SetScript("OnDragStop", function() f:StopMovingOrSizing() end)
-	f:SetScript("OnShow", function() WoWClaudeDB.open = true end)
-	f:SetScript("OnHide", function() WoWClaudeDB.open = false end)
+	f:SetScript("OnUpdate", function() UI.Tick() end)
 	if f.SetClampedToScreen then
 		f:SetClampedToScreen(true)
 	end
@@ -118,7 +117,7 @@ function UI.Build()
 
 	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -6)
-	close:SetScript("OnClick", function() f:Hide() end)
+	close:SetScript("OnClick", function() UI.Toggle() end)
 
 	local refresh = button(f, "Refresh", 80)
 	refresh:SetPoint("TOPRIGHT", f, "TOPRIGHT", -36, -14)
@@ -187,6 +186,12 @@ function UI.Build()
 	scroll:SetScript("OnSizeChanged", function() log:SetWidth(scroll:GetWidth()) end)
 	f.log = log
 
+	-- A hidden texture probes for the daemon's signal file; SetTexture reports whether a file exists.
+	f.probe = f:CreateTexture(nil, "BACKGROUND")
+	f.probe:Hide()
+	-- Self-test: a client that "finds" a missing file cannot poll, so it falls back to Refresh.
+	UI.canProbe = not UI.SignalExists("never")
+
 	local send = button(f, "Send", 80)
 	send:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 16)
 	send:SetScript("OnClick", function() UI.Send() end)
@@ -210,7 +215,52 @@ function UI.Send()
 	end
 	Core.Queue(WoWClaudeDB, WoWClaudeDB.current, text)
 	UI.frame.input:SetText("")
+	UI.Reload()
+end
+
+-- Reload flushes SavedVariables for the daemon; the flag reopens the window on the other side.
+function UI.Reload()
+	WoWClaudeDB.open = true
 	ReloadUI()
+end
+
+function UI.SignalExists(name)
+	local path = "Interface\\AddOns\\WoWClaude\\signal\\" .. Core.SignalEpoch(WoWClaudeDB.epoch) .. "\\" .. name
+	local probe = UI.frame.probe
+	local ok = probe:SetTexture(path)
+	if ok == nil then
+		ok = probe:GetTexture()
+	end
+	probe:SetTexture(nil)
+	return ok and ok ~= 0 and ok ~= "" and true or false
+end
+
+-- Tick animates the wait and reloads once, the moment the daemon signals the turn is done.
+function UI.Tick()
+	local db = WoWClaudeDB
+	if not db.waitFor then
+		return
+	end
+	local now = GetTime()
+	if UI.lastTick and now - UI.lastTick < 0.25 then
+		return
+	end
+	UI.lastTick = now
+	local n = math.floor(now * 2)
+	local dots = string.rep(".", 1 + n - math.floor(n / 3) * 3)
+	local elapsed = Core.Now() - (db.sentAt or Core.Now())
+	UI.frame.status:SetText(GOLD .. "Claude is thinking" .. dots .. RESET .. DIM .. "  " .. elapsed .. "s" .. RESET)
+	if not UI.canProbe or db.autoReloadedFor == db.waitFor then
+		return
+	end
+	if UI.lastProbe and now - UI.lastProbe < 2 then
+		return
+	end
+	UI.lastProbe = now
+	if UI.SignalExists(tostring(db.waitFor)) then
+		db.autoReloadedFor = db.waitFor
+		UI.Reload()
+	end
 end
 
 function UI.RenderSessions()
@@ -282,9 +332,11 @@ end
 
 function UI.Toggle()
 	if UI.frame:IsShown() then
+		WoWClaudeDB.open = false
 		UI.frame:Hide()
 		return
 	end
+	WoWClaudeDB.open = true
 	UI.Render()
 	UI.frame:Show()
 end
@@ -300,9 +352,9 @@ loader:SetScript("OnEvent", function(_, _, name)
 	WoWClaudeDB = Core.InitDB(WoWClaudeDB)
 	Core.Prune(WoWClaudeDB, WoWClaudeInbox.lastAckedID, WoWClaudeInbox.epoch)
 	Core.ResolveCurrent(WoWClaudeDB, WoWClaudeInbox)
-	local reopen = WoWClaudeDB.open
+	Core.Settle(WoWClaudeDB, WoWClaudeInbox)
 	UI.Build()
-	if reopen then
+	if WoWClaudeDB.open then
 		UI.Render()
 		UI.frame:Show()
 	end

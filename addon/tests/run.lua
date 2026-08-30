@@ -75,6 +75,17 @@ test("ResolveCurrent clears a session that vanished", function()
 	eq(db.current, "")
 end)
 
+test("Settle clears the wait only for a done turn in the same epoch", function()
+	local db = Core.InitDB(nil)
+	Core.Queue(db, "", "hi")
+	eq(db.waitFor, 1)
+	eq(Core.Settle(db, { epoch = "other", lastDoneID = 1 }), false)
+	eq(Core.Settle(db, { epoch = db.epoch, lastDoneID = 0 }), false)
+	eq(Core.Settle(db, { epoch = db.epoch, lastDoneID = 1 }), true)
+	eq(db.waitFor, nil)
+	eq(Core.SignalEpoch("12.34"), "12_34")
+end)
+
 test("Transcript merges saved, active and queued turns", function()
 	local db = Core.InitDB(nil)
 	Core.Queue(db, "s1", "third?")
@@ -95,7 +106,8 @@ test("Status prefers error, then queue, then active", function()
 	Core.Queue(db, "", "x")
 	eq(Core.Status(db, { error = "" }):sub(1, 8), "1 queued")
 	db.outbox = {}
-	eq(Core.Status(db, { active = {} }):sub(1, 6), "Claude")
+	eq(Core.Status(db, { active = {} }), "Claude is thinking")
+	db.waitFor = nil
 	eq(Core.Status(db, { generatedAt = "t" }), "idle, inbox from t")
 end)
 

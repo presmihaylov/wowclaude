@@ -19,10 +19,19 @@ function Core.InitDB(db)
 	return db
 end
 
+function Core.Now()
+	return (time or os.time)()
+end
+
+-- SignalEpoch mirrors the daemon: a dot in a texture path reads as an extension.
+function Core.SignalEpoch(epoch)
+	return (string.gsub(epoch or "", "%.", "_"))
+end
+
 -- NewEpoch stamps a fresh SavedVariables so the daemon can tell a reset seq from an old one.
 function Core.NewEpoch()
 	local now = (time or os.time)()
-	return tostring(now) .. "." .. tostring(math.random(1, 999999))
+	return tostring(now) .. "-" .. tostring(math.random(1, 999999))
 end
 
 -- Prune drops outbox entries the daemon has already picked up; an ack from another epoch is stale.
@@ -46,7 +55,22 @@ function Core.Queue(db, sessionID, prompt)
 	if entry.session == "" then
 		db.awaitingNew = prompt
 	end
+	db.waitFor = entry.id
+	db.sentAt = Core.Now()
 	return entry
+end
+
+-- Settle clears the wait once the daemon reports the turn done under the same epoch.
+function Core.Settle(db, inbox)
+	if not db.waitFor then
+		return false
+	end
+	if inbox.epoch ~= db.epoch or (inbox.lastDoneID or 0) < db.waitFor then
+		return false
+	end
+	db.waitFor = nil
+	db.sentAt = nil
+	return true
 end
 
 function Core.FindSession(inbox, id)
@@ -87,8 +111,8 @@ function Core.Status(db, inbox)
 	if getn(db.outbox) > 0 then
 		return getn(db.outbox) .. " queued, waiting for the daemon (press Refresh)"
 	end
-	if inbox.active then
-		return "Claude is working... (press Refresh)"
+	if inbox.active or db.waitFor then
+		return "Claude is thinking"
 	end
 	return "idle, inbox from " .. (inbox.generatedAt or "?")
 end

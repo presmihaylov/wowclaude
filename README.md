@@ -85,9 +85,12 @@ prompt, so never use `default`), `--state` (default `~/.wowclaude/state.json`).
 3. Log in. If the addon shows as out of date, tick "Load out of date AddOns".
    On Classic Era you can also put the current build's interface number in
    `WoWClaude_Vanilla.toc`; on 1.12 the number is always `11200`.
-4. `/claude` opens the window. Pick a session or `+ New chat`, type, press Enter
-   or `Send`. The UI reloads.
-5. Wait for the daemon (its log prints `request N done`), then press `Refresh`.
+4. `/claude` opens the window. Pick a session or `New Chat`, type, press Enter
+   or `Send`. The UI reloads once so the game flushes the message to disk; the
+   window comes back with a "Claude is thinking" indicator and a timer.
+5. When the daemon finishes it drops a signal file the addon polls for, and the
+   UI reloads by itself to show the reply. On a client that cannot see new files
+   (Classic Era) press `Refresh` instead.
 6. `/claude cwd /path/to/repo` sets the working directory for new chats.
 
 If a Lua error appears, run `/console scriptErrors 1` (1.12: `/script SetCVar("scriptErrors", 1)`)
