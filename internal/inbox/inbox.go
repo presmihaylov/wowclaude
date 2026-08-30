@@ -37,6 +37,7 @@ type Inbox struct {
 	DefaultCwd  string
 	LastAckedID int
 	Epoch       string
+	LastDoneID  int
 	Active      *Active
 	Error       string
 	Sessions    []Session
@@ -61,6 +62,7 @@ func Render(in Inbox) string {
 	field(&b, 1, "defaultCwd", in.DefaultCwd)
 	field(&b, 1, "lastAckedID", in.LastAckedID)
 	field(&b, 1, "epoch", in.Epoch)
+	field(&b, 1, "lastDoneID", in.LastDoneID)
 	field(&b, 1, "error", in.Error)
 	if in.Active != nil {
 		b.WriteString("\tactive = {\n")

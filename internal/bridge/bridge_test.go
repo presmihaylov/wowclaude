@@ -70,6 +70,12 @@ func TestFailedRequestStaysVisible(t *testing.T) {
 	if !strings.Contains(got, `error = "request 1:`) || !strings.Contains(got, `epoch = "fresh"`) {
 		t.Fatalf("seq regression was ignored:\n%s", got)
 	}
+	if !strings.Contains(got, "lastDoneID = 1,") {
+		t.Fatalf("lastDoneID missing:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(AddonDir(wow), "signal", "fresh", "1.tga")); err != nil {
+		t.Fatalf("signal file missing: %v", err)
+	}
 }
 
 func readInbox(t *testing.T, b *Bridge) string {
