@@ -13,25 +13,30 @@ Two parts:
 ## How the bridge works
 
 WoW addon Lua has no sockets, no `io`, no `os` and cannot start a process. The
-only channels are files, and the game only reads and writes them on `/reload`.
+only outbound channel is SavedVariables, which the game writes on `/reload`. The
+inbound channel is `LoadAddOn`: a LoadOnDemand addon's Lua file is read from disk
+at the moment it is loaded, so a file the daemon wrote a second ago comes in live.
 
 ```
-in game                          on disk                            daemon
---------                         -------                            ------
-Send  ->  SavedVariables/WoWClaude.lua  (game writes on ReloadUI)  ->  poll mtime
-                                                                       claude -p ...
-Refresh <- Interface/AddOns/WoWClaude/Inbox.lua (game reads on ReloadUI) <- atomic write
+in game                          on disk                                  daemon
+--------                         -------                                  ------
+Send   ->  SavedVariables/WoWClaude.lua      (game writes on ReloadUI)  ->  poll mtime
+                                                                             claude -p ...
+LoadAddOn <- AddOns/WoWClaudeIn0007/Reply.lua  (read fresh on LoadAddOn) <-  write slot
+poll      <- AddOns/WoWClaude/signal/<epoch>/<id>.tga (SetTexture probe) <-  drop signal
 ```
 
-The `Send` button queues the prompt in `WoWClaudeDB.outbox` and calls
-`ReloadUI()`, which flushes SavedVariables. The daemon runs
-`claude -p <prompt> [--resume <id>] --output-format stream-json`, streams partial
-text into `Inbox.lua` once a second, then rescans `~/.claude/projects` and writes
-the full session list with the last 40 turns of each. `Refresh` is a second
-`ReloadUI()` that pulls the answer in.
+`Send` queues the prompt in `WoWClaudeDB.outbox` with the next free slot number
+and calls `ReloadUI()`, which flushes SavedVariables. The daemon runs
+`claude -p <prompt> [--resume <id>] --output-format stream-json`, writes the
+finished session into that slot as `WoWClaudeReply = {...}`, rewrites `Inbox.lua`
+(the full session list, read on the next reload), and drops a signal file. The
+addon probes for the signal with `SetTexture` every 2 seconds, calls `LoadAddOn`
+on the slot, merges the reply into its session list, and repaints.
 
-Two reloads per turn is the floor. `C_UI.Reload` needs a hardware event, so the
-addon cannot reload on a timer, and there is no live inbound channel.
+One reload per turn (after Send) is the floor. A slot loads once per game
+session, so `install` creates 200 of them; the client lists addons at launch, so
+they must exist before the game starts.
 
 ## Supported clients
 
@@ -88,9 +93,13 @@ prompt, so never use `default`), `--state` (default `~/.wowclaude/state.json`).
 4. `/claude` opens the window. Pick a session or `New Chat`, type, press Enter
    or `Send`. The UI reloads once so the game flushes the message to disk; the
    window comes back with a "Claude is thinking" indicator and a timer.
-5. When the daemon finishes it drops a signal file the addon polls for, and the
-   UI reloads by itself to show the reply. On a client that cannot see new files
-   (Classic Era) press `Refresh` instead.
+5. The reply arrives live. `install` creates 200 LoadOnDemand addons
+   (`WoWClaudeIn0001..0200`); the daemon writes each finished turn into the next
+   free one and drops a signal file, and the addon calls `LoadAddOn` on it and
+   repaints the transcript with no reload. Each slot works once per game session,
+   so 200 replies per launch. The slots must exist before the game starts: restart
+   the game after `install`. If the live path fails the addon reloads instead, and
+   `Refresh` always works.
 6. `/claude cwd /path/to/repo` sets the working directory for new chats.
 
 If a Lua error appears, run `/console scriptErrors 1` (1.12: `/script SetCVar("scriptErrors", 1)`)

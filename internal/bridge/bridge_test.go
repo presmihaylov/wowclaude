@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/presmihaylov/wowclaude/internal/slots"
 )
 
 // TestFailedRequestStaysVisible: a claude failure must survive later refreshes until a new request starts.
@@ -33,7 +35,10 @@ func TestFailedRequestStaysVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outbox := "WoWClaudeDB = { outbox = { { id = 1, session = \"\", cwd = \"\", prompt = \"hi\" } } }\n"
+	if err := slots.Install(filepath.Join(wow, "Interface", "AddOns"), 2); err != nil {
+		t.Fatal(err)
+	}
+	outbox := "WoWClaudeDB = { outbox = { { id = 1, slot = 2, session = \"\", cwd = \"\", prompt = \"hi\" } } }\n"
 	if err := os.WriteFile(filepath.Join(sv, AddonName+".lua"), []byte(outbox), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +80,13 @@ func TestFailedRequestStaysVisible(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(AddonDir(wow), "signal", "fresh", "1.tga")); err != nil {
 		t.Fatalf("signal file missing: %v", err)
+	}
+	reply, err := os.ReadFile(filepath.Join(wow, "Interface", "AddOns", "WoWClaudeIn0002", "Reply.lua"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(reply), "WoWClaudeReply = {") || !strings.Contains(string(reply), `error = "request 1:`) {
+		t.Fatalf("slot payload:\n%s", reply)
 	}
 }
 

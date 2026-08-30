@@ -86,6 +86,27 @@ test("Settle clears the wait only for a done turn in the same epoch", function()
 	eq(Core.SignalEpoch("12.34"), "12_34")
 end)
 
+test("FirstFreeSlot skips loaded slots and names them like the daemon", function()
+	local loaded = { WoWClaudeIn0001 = true, WoWClaudeIn0002 = true }
+	eq(Core.FirstFreeSlot(function(n) return loaded[n] end, 5), 3)
+	eq(Core.FirstFreeSlot(function() return true end, 5), 0)
+	eq(Core.SlotName(42), "WoWClaudeIn0042")
+end)
+
+test("ApplyReply merges the session, selects it, and clears the wait", function()
+	local db = Core.InitDB({ slotBase = 4 })
+	local e = Core.Queue(db, "", "hi")
+	eq(e.slot, 4); eq(db.waitSlot, 4)
+	local inbox = { epoch = db.epoch, sessions = { { id = "old", messages = {} } } }
+	eq(Core.ApplyReply(db, inbox, { id = 9, epoch = db.epoch }), false)
+	eq(Core.ApplyReply(db, inbox, { id = 1, epoch = "other" }), false)
+	local reply = { id = 1, epoch = db.epoch, error = "", session = { id = "new", messages = { { role = "user", text = "hi" } } } }
+	eq(Core.ApplyReply(db, inbox, reply), true)
+	eq(inbox.sessions[1].id, "new"); eq(inbox.sessions[2].id, "old")
+	eq(db.current, "new"); eq(db.waitFor, nil); eq(table.getn(db.outbox), 0)
+	eq(inbox.lastDoneID, 1)
+end)
+
 test("Transcript merges saved, active and queued turns", function()
 	local db = Core.InitDB(nil)
 	Core.Queue(db, "s1", "third?")

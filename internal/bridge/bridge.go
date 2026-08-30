@@ -17,11 +17,13 @@ import (
 	"github.com/presmihaylov/wowclaude/internal/inbox"
 	"github.com/presmihaylov/wowclaude/internal/outbox"
 	"github.com/presmihaylov/wowclaude/internal/sessions"
+	"github.com/presmihaylov/wowclaude/internal/slots"
 )
 
 const (
 	AddonName   = "WoWClaude"
 	maxSessions = 30
+	Slots       = 200
 	maxMessages = 40
 	maxChars    = 6000
 )
@@ -228,25 +230,46 @@ func (b *Bridge) handle(ctx context.Context, r outbox.Request) error {
 	if err != nil {
 		log.Printf("request %d failed: %v", r.ID, err)
 		b.lastErr = fmt.Sprintf("request %d: %v", r.ID, err)
-		return b.finish(r.ID)
+		return b.finish(r, "")
 	}
 	log.Printf("request %d done: session=%s chars=%d", r.ID, res.SessionID, len(res.Text))
 	if res.IsError {
 		b.lastErr = fmt.Sprintf("request %d: claude reported an error: %s", r.ID, truncate(res.Text))
 	}
-	return b.finish(r.ID)
+	return b.finish(r, res.SessionID)
 }
 
-// finish records the turn as done and drops the signal file the addon polls for, then rewrites the inbox.
-func (b *Bridge) finish(id int) error {
-	b.st.LastDoneID = id
+// finish rescans, delivers the turn through its slot, then signals so the addon loads it without a reload.
+func (b *Bridge) finish(r outbox.Request, sessionID string) error {
+	b.st.LastDoneID = r.ID
 	if err := b.saveState(); err != nil {
 		return err
 	}
-	if err := writeSignal(AddonDir(b.cfg.WowDir), b.st.Epoch, id); err != nil {
+	sess, err := b.loadSessions()
+	if err != nil {
 		return err
 	}
-	return b.refresh()
+	b.mu.Lock()
+	b.inbox.Sessions = sess
+	b.mu.Unlock()
+	if r.Slot > 0 {
+		reply := inbox.Reply{ID: r.ID, Epoch: b.st.Epoch, Error: b.lastErr}
+		for i := range sess {
+			if sess[i].ID == sessionID {
+				reply.Session = &sess[i]
+			}
+		}
+		if reply.Session == nil && reply.Error == "" {
+			reply.Error = fmt.Sprintf("request %d: session %s not found after the turn", r.ID, sessionID)
+		}
+		if err := slots.Write(filepath.Dir(AddonDir(b.cfg.WowDir)), r.Slot, inbox.RenderReply(reply)); err != nil {
+			return err
+		}
+	}
+	if err := b.writeInbox(nil); err != nil {
+		return err
+	}
+	return writeSignal(AddonDir(b.cfg.WowDir), b.st.Epoch, r.ID)
 }
 
 // refresh rescans transcripts and rewrites the inbox with no active request.
@@ -269,6 +292,7 @@ func (b *Bridge) writeInbox(active *inbox.Active) error {
 	b.inbox.LastAckedID = b.st.LastAckedID
 	b.inbox.Epoch = b.st.Epoch
 	b.inbox.LastDoneID = b.st.LastDoneID
+	b.inbox.Slots = Slots
 	b.inbox.Active = active
 	b.inbox.Error = b.lastErr
 	if err := inbox.Write(b.inboxPath(), b.inbox); err != nil {

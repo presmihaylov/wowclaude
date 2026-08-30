@@ -213,6 +213,14 @@ function UI.Send()
 	if text == "" then
 		return
 	end
+	-- One turn at a time keeps the slot assignment unambiguous; the daemon gets 2 minutes before we give up on it.
+	if WoWClaudeDB.waitFor and Core.Now() - (WoWClaudeDB.sentAt or 0) < 120 then
+		say("Claude is still answering, wait for the reply")
+		return
+	end
+	if WoWClaudeDB.slotBase == 0 then
+		say("all reply slots are used up, restart the game to get them back")
+	end
 	Core.Queue(WoWClaudeDB, WoWClaudeDB.current, text)
 	UI.frame.input:SetText("")
 	UI.Reload()
@@ -259,8 +267,40 @@ function UI.Tick()
 	UI.lastProbe = now
 	if UI.SignalExists(tostring(db.waitFor)) then
 		db.autoReloadedFor = db.waitFor
-		UI.Reload()
+		UI.LoadReply()
 	end
+end
+
+-- Classic Era moved the addon API under C_AddOns; 1.12 has the globals.
+function UI.IsAddOnLoaded(name)
+	local fn = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+	return fn(name) and true or false
+end
+
+function UI.LoadAddOn(name)
+	local fn = (C_AddOns and C_AddOns.LoadAddOn) or LoadAddOn
+	local ok = fn(name)
+	return ok and true or false
+end
+
+-- LoadReply pulls the finished turn in through its slot addon; if that fails, the old reload path still works.
+function UI.LoadReply()
+	local db = WoWClaudeDB
+	local slot = db.waitSlot or 0
+	if slot == 0 or not UI.LoadAddOn(Core.SlotName(slot)) then
+		say("could not load the reply slot, reloading instead")
+		UI.Reload()
+		return
+	end
+	local reply = WoWClaudeReply
+	WoWClaudeReply = nil
+	if not Core.ApplyReply(db, WoWClaudeInbox, reply) then
+		say("reply slot held another turn, reloading instead")
+		UI.Reload()
+		return
+	end
+	db.slotBase = Core.FirstFreeSlot(UI.IsAddOnLoaded, WoWClaudeInbox.slots or 200)
+	UI.Render()
 end
 
 function UI.RenderSessions()
@@ -353,6 +393,7 @@ loader:SetScript("OnEvent", function(_, _, name)
 	Core.Prune(WoWClaudeDB, WoWClaudeInbox.lastAckedID, WoWClaudeInbox.epoch)
 	Core.ResolveCurrent(WoWClaudeDB, WoWClaudeInbox)
 	Core.Settle(WoWClaudeDB, WoWClaudeInbox)
+	WoWClaudeDB.slotBase = Core.FirstFreeSlot(UI.IsAddOnLoaded, WoWClaudeInbox.slots or 200)
 	UI.Build()
 	if WoWClaudeDB.open then
 		UI.Render()
