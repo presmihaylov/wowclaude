@@ -11,7 +11,8 @@ local ROW_HEIGHT = 24
 local SIDEBAR = 220
 local MAX_ROWS = 15
 
-local getn = table.getn
+-- Classic Era dropped table.getn; 1.12 has it and lacks the # operator.
+local getn = table.getn or function(t) local n = 0 while t[n + 1] ~= nil do n = n + 1 end return n end
 local strlen = string.len
 
 -- BackdropTemplate exists only on modern clients; 1.12 frames carry SetBackdrop natively.

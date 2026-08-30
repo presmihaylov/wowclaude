@@ -69,7 +69,8 @@ Classic Era on macOS:
 Classic Era on Windows: `--wow-dir "C:\Program Files (x86)\World of Warcraft\_classic_era_"`.
 
 `serve` flags: `--account` (only when `WTF/Account` has several folders),
-`--claude` (binary; needed when `claude` is not on PATH), `--cwd` (working
+`--claude` (binary; when omitted the daemon uses `claude` on PATH, then the newest
+`Claude\claude-code\<version>\claude.exe` under `%APPDATA%`, so app updates do not break it), `--cwd` (working
 directory for new chats; pick a narrow one, prompts auto-accept edits there),
 `--permission-mode` (default `acceptEdits`; print mode cannot answer a permission
 prompt, so never use `default`), `--state` (default `~/.wowclaude/state.json`).
