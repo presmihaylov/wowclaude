@@ -1,0 +1,105 @@
+local _, ns = ...
+
+-- Pure state logic, no frames, so it runs under plain Lua in tests.
+local Core = {}
+ns.Core = Core
+
+function Core.InitDB(db)
+	db = db or {}
+	db.seq = db.seq or 0
+	db.outbox = db.outbox or {}
+	db.current = db.current or ""
+	db.awaitingNew = db.awaitingNew or false
+	return db
+end
+
+-- Prune drops outbox entries the daemon has already picked up.
+function Core.Prune(db, lastAckedID)
+	local kept = {}
+	for _, e in ipairs(db.outbox) do
+		if e.id > (lastAckedID or 0) then
+			kept[#kept + 1] = e
+		end
+	end
+	db.outbox = kept
+end
+
+function Core.Queue(db, sessionID, prompt)
+	db.seq = db.seq + 1
+	local entry = { id = db.seq, session = sessionID or "", cwd = db.cwd or "", prompt = prompt }
+	db.outbox[#db.outbox + 1] = entry
+	if entry.session == "" then
+		db.awaitingNew = prompt
+	end
+	return entry
+end
+
+function Core.FindSession(inbox, id)
+	for _, s in ipairs(inbox.sessions or {}) do
+		if s.id == id then
+			return s
+		end
+	end
+	return nil
+end
+
+-- ResolveCurrent jumps to the session a "new chat" prompt created, matched by its first turn.
+function Core.ResolveCurrent(db, inbox)
+	if db.current ~= "" and not Core.FindSession(inbox, db.current) then
+		db.current = ""
+	end
+	if not db.awaitingNew then
+		return
+	end
+	if #db.outbox > 0 or (inbox.active and inbox.active.sessionID == "") then
+		return
+	end
+	local prompt = db.awaitingNew
+	db.awaitingNew = false
+	for _, s in ipairs(inbox.sessions or {}) do
+		local first = s.messages and s.messages[1]
+		if first and first.text == prompt then
+			db.current = s.id
+			return
+		end
+	end
+end
+
+function Core.Status(db, inbox)
+	if inbox.error and inbox.error ~= "" then
+		return "error: " .. inbox.error
+	end
+	if #db.outbox > 0 then
+		return #db.outbox .. " queued, waiting for the daemon (press Refresh)"
+	end
+	if inbox.active then
+		return "Claude is working... (press Refresh)"
+	end
+	return "idle, inbox from " .. (inbox.generatedAt or "?")
+end
+
+-- Transcript merges saved turns, the running turn, and queued prompts for one session.
+function Core.Transcript(db, inbox, sessionID)
+	local out = {}
+	local s = Core.FindSession(inbox, sessionID)
+	if s then
+		for _, m in ipairs(s.messages or {}) do
+			out[#out + 1] = { role = m.role, text = m.text }
+		end
+	end
+	local a = inbox.active
+	if a and a.sessionID == sessionID then
+		out[#out + 1] = { role = "user", text = a.prompt }
+		local partial = a.partial or ""
+		if partial == "" then
+			partial = "..."
+		end
+		out[#out + 1] = { role = "assistant", text = partial, pending = true }
+	end
+	for _, e in ipairs(db.outbox) do
+		if e.session == sessionID then
+			out[#out + 1] = { role = "user", text = e.prompt, queued = true }
+		end
+	end
+	return out
+end
